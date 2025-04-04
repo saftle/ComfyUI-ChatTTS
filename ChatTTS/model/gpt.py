@@ -85,11 +85,15 @@ class GPT_warpper(nn.Module):
         if past_key_values is not None:
             if isinstance(past_key_values, Cache):
                 past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
-                max_cache_length = (
-                    torch.tensor(past_key_values.get_max_length(), device=input_ids.device)
-                    if past_key_values.get_max_length() is not None
-                    else None
-                )
+                
+                # Handle both old and new API for cache length
+                max_cache_length = None
+                if hasattr(past_key_values, 'get_max_length'):
+                    # Old API
+                    max_length = past_key_values.get_max_length()
+                    if max_length is not None:
+                        max_cache_length = torch.tensor(max_length, device=input_ids.device)
+                
                 cache_length = past_length if max_cache_length is None else torch.min(max_cache_length, past_length)
             # TODO joao: remove this `else` after `generate` prioritizes `Cache` objects
             else:
@@ -128,9 +132,6 @@ class GPT_warpper(nn.Module):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            # The `contiguous()` here is necessary to have a static stride during decoding. torchdynamo otherwise
-            # recompiles graphs as the stride of the inputs is a guard. Ref: https://github.com/huggingface/transformers/pull/29114
-            # TODO: use `next_tokens` directly instead.
             model_inputs = {"input_ids": input_ids.contiguous()}
 
         input_length = position_ids.shape[-1] if position_ids is not None else input_ids.shape[-1]

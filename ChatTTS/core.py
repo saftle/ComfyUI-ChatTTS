@@ -118,8 +118,36 @@ class Chat:
         if tokenizer_path:
             tokenizer = torch.load(tokenizer_path, map_location='cpu')
             tokenizer.padding_side = 'left'
+            
+            # Add pad token if it doesn't exist
+            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+                # Try to use existing attributes or fall back to a default
+                if hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+                    tokenizer.pad_token = tokenizer.eos_token
+                elif hasattr(tokenizer, '_pad_token'):
+                    tokenizer.pad_token = tokenizer._pad_token
+                else:
+                    tokenizer.pad_token = '[PAD]'
+            
+            # Convert pad_token to string if it's an AddedToken object
+            if hasattr(tokenizer.pad_token, '__class__') and 'AddedToken' in str(tokenizer.pad_token.__class__):
+                # Store the original token's string representation
+                pad_token_str = str(tokenizer.pad_token)
+                # Replace with string representation
+                tokenizer.pad_token = pad_token_str
+            
+            # Ensure pad_token_id is also set
+            if not hasattr(tokenizer, 'pad_token_id') or tokenizer.pad_token_id is None or getattr(tokenizer, 'pad_token_id', -1) < 0:
+                try:
+                    # Use the string version of pad_token
+                    tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0]
+                except Exception as e:
+                    # If that fails, use a default ID
+                    tokenizer.pad_token_id = 0
+                    
             self.pretrain_models['tokenizer'] = tokenizer
             self.logger.log(logging.INFO, 'tokenizer loaded.')
+
             
         self.check_model()
     

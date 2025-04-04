@@ -92,13 +92,37 @@ def refine_text(
     assert len(text), 'text should not be empty'
 
     text = [f"[Sbreak]{i}[Pbreak]{prompt}" for i in text]
-    text_token = models['tokenizer'](text, return_tensors='pt', add_special_tokens=False, padding=True).to(device)
-    text_mask = torch.ones(text_token['input_ids'].shape, dtype=bool, device=device)
-
+    
+    # Manually encode and pad to avoid AddedToken conversion issues
+    encodings = []
+    for t in text:
+        # Use encode instead of the __call__ method with padding
+        encoding = models['tokenizer'].encode(t, add_special_tokens=False)
+        encodings.append(encoding)
+    
+    # Find max length for padding
+    max_length = max(len(enc) for enc in encodings)
+    
+    # Manually pad
+    input_ids = []
+    attention_mask = []
+    
+    for enc in encodings:
+        padding_length = max_length - len(enc)
+        # Use 0 as padding token
+        input_ids.append(enc + [0] * padding_length)
+        attention_mask.append([1] * len(enc) + [0] * padding_length)
+    
+    # Convert to tensors
+    input_ids = torch.tensor(input_ids, device=device)
+    attention_mask = torch.tensor(attention_mask, device=device)
+    
+    text_mask = torch.ones_like(input_ids, dtype=bool, device=device)
+    
     inputs = {
-        'input_ids': text_token['input_ids'][...,None].expand(-1, -1, models['gpt'].num_vq),
+        'input_ids': input_ids[...,None].expand(-1, -1, models['gpt'].num_vq),
         'text_mask': text_mask,
-        'attention_mask': text_token['attention_mask'],
+        'attention_mask': attention_mask,
     }
     
     LogitsWarpers = []
